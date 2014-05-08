@@ -94,7 +94,10 @@ def _get_help(repo=None):
     if repo and len(repo) == 1:
         msg = "{0} is not a git repo".format(repo)
     elif repo and len(repo) > 1:
-        msg = "{0} are not git repos".format(", ".join(repo))
+        msg = "None of {0} or {1} are git repos".format(
+            ", ".join(repo[:-1]),
+            repo[-1],
+        )
     else:
         msg = "{0} is not a git repo".format(os.path.realpath(os.curdir))
 
@@ -113,7 +116,7 @@ def parse_argv():
         for arg in sys.argv[1:]:
             all_credit.update(_walk_for_git(arg))
 
-    return all_credit or _get_help()
+    return all_credit or _get_help(sys.argv[1:])
 
 
 def main():

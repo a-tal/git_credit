@@ -92,7 +92,7 @@ def _get_help(repo=None):
     """Raises SystemExit with a help message for the user."""
 
     if repo and len(repo) == 1:
-        msg = "{0} is not a git repo".format(repo)
+        msg = "{0} is not a git repo".format(repo[0])
     elif repo and len(repo) > 1:
         msg = "{0} {1} {2}or {3} are git repos".format(
             "Neither" if len(repo) == 2 else "None of",

@@ -28,7 +28,6 @@ def test_parse_args(args):
         base.parse_args(args)
 
     for arg in args[1:]:
-        print("testing {}".format(arg))
         mock_git.assert_any_call(arg)
 
     assert mock_git.called

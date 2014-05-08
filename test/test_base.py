@@ -165,8 +165,13 @@ def test_parsing_git_log():
 
     committers = base.parse_git_log(data)
 
+    if sys.version_info > (3,):
+        string_types = str
+    else:
+        string_types = (str, unicode)
+
     for committer, _ in committers.items():
-        assert isinstance(committer, str)
+        assert isinstance(committer, string_types)
 
     assert committers["Joe"] == 100
     assert committers["Bob"] == 13

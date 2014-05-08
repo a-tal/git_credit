@@ -1,38 +1,61 @@
 """Give credit for the current git project or all projects down from cwd."""
 
 
+from __future__ import division
+
 import os
 import sys
+import time
 import subprocess
 
 
-def get_credit_for_repo(filepath):
-    """Get a dict of {user: lines in HEAD} for the filepath git repo."""
+def _clean_line(line):
+    """Strips and maybe decodes a line of text."""
+
+    line = line.strip()
+    if isinstance(line, bytes):
+        line = line.decode("latin-1")
+    return line
+
+
+def _run_cmd(cmd):
+    """Runs a shell command and captures stdout."""
+
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    output = []
+    while True:
+        try:
+            stdout, _ = proc.communicate()
+        except:
+            break
+        stdout = _clean_line(stdout)
+        if stdout:
+            output.append(stdout)
+        time.sleep(.1)
+
+    return "".join(output).splitlines()
+
+
+def get_credit_by_line(filepath):
+    """Get a dictionary of git credit for all files in a repo by lines."""
 
     _prev_dir = os.getcwd()
     os.chdir(filepath)
-    proc = subprocess.Popen(
-        "git log --pretty=format:%an", shell=True, stdout=subprocess.PIPE
-    )
-    proc.wait()
+    all_files = {}
+    walk_cmd = "git ls-tree --name-only -r HEAD | grep -E '\\.py$'"
+    for py_file in _run_cmd(walk_cmd):
+        for line in _run_cmd("git blame --line-porcelain {0}".format(py_file)):
+            if not line.startswith("author "):
+                continue
+            line = line[7:]
+
+            if line in all_files:
+                all_files[line] += 1
+            else:
+                all_files[line] = 1
+
     os.chdir(_prev_dir)
-
-    return parse_git_log(proc.stdout)
-
-
-def parse_git_log(output):
-    """Parses the string output of the git log command into a dict."""
-
-    committers = {}
-    for line in output or []:
-        line = line.strip()
-        if isinstance(line, bytes):
-            line = line.decode("latin-1")
-        if line in committers:
-            committers[line] += 1
-        else:
-            committers[line] = 1
-    return committers
+    return all_files
 
 
 def is_git_dir(filepath):
@@ -56,7 +79,7 @@ def display_credit(credit):
         repo_total = sum(committers.values())
         print("git credit for repo: {0}".format(repo))
         for committer, lines in sorted_by_value(committers):
-            print("  {0}: {1} ({2:.1f}%)".format(
+            print("    {0}: {1} lines ({2:.1f}%)".format(
                 committer,
                 lines,
                 ((lines / repo_total) * 100),
@@ -70,7 +93,7 @@ def display_credit(credit):
         total_lines = sum(total_per_committer.values())
         print("total git credit across all {0} repos:".format(len(credit)))
         for committer, lines in sorted_by_value(total_per_committer):
-            print("  {0}: {1} ({2:.1f}%)".format(
+            print("    {0}: {1} lines ({2:.1f}%)".format(
                 committer,
                 lines,
                 ((lines / total_lines) * 100),
@@ -90,7 +113,7 @@ def walk_git(filepath=None):
     all_credit = {}
     for repo, _, _ in os.walk(os.path.realpath(filepath)):
         if is_git_dir(repo):
-            all_credit[repo] = get_credit_for_repo(repo)
+            all_credit[repo] = get_credit_by_line(repo)
 
     return all_credit
 

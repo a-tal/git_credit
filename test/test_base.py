@@ -1,6 +1,8 @@
 """Unit tests for git_credit.base."""
 
 
+from __future__ import division
+
 import os
 import sys
 import pytest
@@ -72,7 +74,7 @@ def test_walk_git(filepath):
     realpath_mock = patch.object(base.os.path, "realpath", return_value="fake")
     walk_mock = patch.object(base.os, "walk", return_value=[("ok", 0, 0)])
     git_dir_mock = patch.object(base, "is_git_dir", return_value=True)
-    get_credit_mock = patch.object(base, "get_credit_for_repo", return_value=1)
+    get_credit_mock = patch.object(base, "get_credit_by_line", return_value=1)
 
     with realpath_mock as mock_realpath:
         with walk_mock as mock_walk:
@@ -117,7 +119,7 @@ def test_output_more_than_one(test_input, capfd):
         repo_lines = sum(committers.values())
         assert "git credit for repo: {0}".format(repo) in out
         for name, lines in committers.items():
-            assert "  {0}: {1} ({2:.1f}%)".format(
+            assert "    {0}: {1} lines ({2:.1f}%)".format(
                 name,
                 lines,
                 ((lines / repo_lines) * 100),
@@ -132,7 +134,7 @@ def test_output_more_than_one(test_input, capfd):
         assert exp in out
         total_lines = sum(all_committers.values())
         for name, lines in all_committers.items():
-            assert "  {0}: {1} ({2:.1f}%)".format(
+            assert "    {0}: {1} lines ({2:.1f}%)".format(
                 name,
                 lines,
                 ((lines / total_lines) * 100),
@@ -155,48 +157,3 @@ def test_is_git_dir():
     mock_join.assert_called_once_with("ok", ".git")
     mock_exists.assert_called_once_with("joined")
     mock_isdir.assert_called_once_with("joined")
-
-
-def test_parsing_git_log():
-    """Ensure we can count and decode."""
-
-    data = list(("Joe",) * 100) + list(("Bob".encode("utf-8"),) * 13) + \
-           list(("Sue",) * 50) + list(("Joanne".encode("utf-8"),) * 77)
-
-    committers = base.parse_git_log(data)
-
-    if sys.version_info > (3,):
-        string_types = str
-    else:
-        string_types = (str, unicode)
-
-    for committer, _ in committers.items():
-        assert isinstance(committer, string_types)
-
-    assert committers["Joe"] == 100
-    assert committers["Bob"] == 13
-    assert committers["Sue"] == 50
-    assert committers["Joanne"] == 77
-
-
-def test_get_credit_for_repo():
-    """Ensure we are calling git correctly."""
-
-    my_mock = Mock()
-
-    popen_mock = patch.object(base.subprocess, "Popen", return_value=my_mock)
-
-    with popen_mock as mock_popen:
-        with patch.object(base.os, "chdir") as mock_chdir:
-            with patch.object(base, "parse_git_log") as mock_parse:
-                base.get_credit_for_repo("something")
-
-    mock_parse.assert_called_once_with(my_mock.stdout)
-    mock_popen.assert_called_once_with(
-        "git log --pretty=format:%an",
-        shell=True,
-        stdout=base.subprocess.PIPE,
-    )
-
-    for filepath in ["something", os.getcwd()]:
-        mock_chdir.assert_any_call(filepath)

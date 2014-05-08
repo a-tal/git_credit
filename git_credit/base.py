@@ -6,7 +6,7 @@ import sys
 import subprocess
 
 
-def _get_credit(filepath):
+def get_credit_for_repo(filepath):
     """Get a dict of {user: lines in HEAD} for the filepath git repo."""
 
     _prev_dir = os.getcwd()
@@ -17,8 +17,14 @@ def _get_credit(filepath):
     proc.wait()
     os.chdir(_prev_dir)
 
+    return parse_git_log(proc.stdout)
+
+
+def parse_git_log(output):
+    """Parses the string output of the git log command into a dict."""
+
     committers = {}
-    for line in proc.stdout or []:
+    for line in output or []:
         line = line.strip()
         if isinstance(line, bytes):
             line = line.decode("latin-1")
@@ -29,14 +35,14 @@ def _get_credit(filepath):
     return committers
 
 
-def _is_git_dir(filepath):
+def is_git_dir(filepath):
     """Return a boolean of if this filepath has a .git folder."""
 
     git_dir = os.path.join(os.path.realpath(filepath), ".git")
     return os.path.exists(git_dir) and os.path.isdir(git_dir)
 
 
-def _sorted_by_value(credit):
+def sorted_by_value(credit):
     """Return the credit dict as a sorted list by value."""
 
     return sorted(credit.items(), key=lambda user: user[1], reverse=True)
@@ -49,11 +55,11 @@ def display_credit(credit):
     for repo, committers in credit.items():
         repo_total = sum(committers.values())
         print("git credit for repo: {0}".format(repo))
-        for committer, lines in _sorted_by_value(committers):
-            print("  {0}: {1} ({2}%)".format(
+        for committer, lines in sorted_by_value(committers):
+            print("  {0}: {1} ({2:.1f}%)".format(
                 committer,
                 lines,
-                float("{:.2f}".format((lines / repo_total) * 100))
+                ((lines / repo_total) * 100),
             ))
             if committer in total_per_committer:
                 total_per_committer[committer] += lines
@@ -62,16 +68,16 @@ def display_credit(credit):
 
     if len(credit) > 1:
         total_lines = sum(total_per_committer.values())
-        print("total git credit for all repos:")
-        for committer, lines in _sorted_by_value(total_per_committer):
-            print("  {0}: {1} ({2}%)".format(
+        print("total git credit across all {0} repos:".format(len(credit)))
+        for committer, lines in sorted_by_value(total_per_committer):
+            print("  {0}: {1} ({2:.1f}%)".format(
                 committer,
                 lines,
-                float("{:.2f}".format((lines / total_lines) * 100))
+                ((lines / total_lines) * 100),
             ))
 
 
-def _walk_for_git(filepath=None):
+def walk_git(filepath=None):
     """Get credit for all repos down from filepath.
 
     Returns:
@@ -83,48 +89,50 @@ def _walk_for_git(filepath=None):
 
     all_credit = {}
     for repo, _, _ in os.walk(os.path.realpath(filepath)):
-        if _is_git_dir(repo):
-            all_credit[repo] = _get_credit(repo)
+        if is_git_dir(repo):
+            all_credit[repo] = get_credit_for_repo(repo)
+
     return all_credit
 
 
-def _get_help(repo=None):
+def get_help(repo=None):
     """Raises SystemExit with a help message for the user."""
 
-    if repo and len(repo) == 1:
+    if not repo:
+        repo = [os.path.realpath(os.curdir)]
+
+    if len(repo) == 1:
         msg = "{0} is not a git repo".format(repo[0])
-    elif repo and len(repo) > 1:
-        msg = "{0} {1} {2}or {3} contain git repos".format(
-            "Neither" if len(repo) == 2 else "None of",
+    elif len(repo) == 2:
+        msg = "Neither {0} nor {1} contain git repos".format(repo[0], repo[1])
+    else:
+        msg = "None of {0} or {1} contain git repos".format(
             ", ".join(repo[:-1]),
-            "n" if len(repo) == 2 else "",
             repo[-1],
         )
-    else:
-        msg = "{0} is not a git repo".format(os.path.realpath(os.curdir))
 
     raise SystemExit(msg)
 
 
-def parse_argv():
-    """Check sys.argv for arguments and build the all_credit dict with them."""
+def parse_args(args):
+    """Check for arguments as filepaths and build the credit dict with them."""
 
-    if len(sys.argv) == 1:
-        all_credit = _walk_for_git()
-    elif len(sys.argv) == 2:
-        all_credit = _walk_for_git(sys.argv[1])
+    if len(args) == 1:
+        all_credit = walk_git()
+    elif len(args) == 2:
+        all_credit = walk_git(args[1])
     else:
         all_credit = {}
-        for arg in sys.argv[1:]:
-            all_credit.update(_walk_for_git(arg))
+        for arg in args[1:]:
+            all_credit.update(walk_git(arg))
 
-    return all_credit or _get_help(sys.argv[1:])
+    return all_credit or get_help(args[1:])
 
 
 def main():
     """Command line entry point."""
 
-    display_credit(parse_argv())
+    display_credit(parse_args(sys.argv))
 
 
 if __name__ == "__main__":

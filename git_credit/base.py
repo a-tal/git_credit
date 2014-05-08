@@ -21,7 +21,8 @@ def _clean_line(line):
 def _run_cmd(cmd):
     """Runs a shell command and captures stdout."""
 
-    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
     output = []
     while True:
         try:
@@ -44,7 +45,8 @@ def get_credit_by_line(filepath):
     all_files = {}
     walk_cmd = "git ls-tree --name-only -r HEAD | grep -E '\\.py$'"
     for py_file in _run_cmd(walk_cmd):
-        for line in _run_cmd("git blame --line-porcelain {0}".format(py_file)):
+        cmd = "git blame --line-porcelain -L '/[^\\s]/' {0}".format(py_file)
+        for line in _run_cmd(cmd):
             if not line.startswith("author "):
                 continue
             line = line[7:]

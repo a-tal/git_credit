@@ -27,7 +27,7 @@ class PyTest(TestCommand):
 
 setup(
     name="git_credit",
-    version="0.0.2",
+    version="0.0.3",
     author="Adam Talsma",
     author_email="adam@talsma.ca",
     packages=["git_credit"],

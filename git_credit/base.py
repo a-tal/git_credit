@@ -94,8 +94,10 @@ def _get_help(repo=None):
     if repo and len(repo) == 1:
         msg = "{0} is not a git repo".format(repo)
     elif repo and len(repo) > 1:
-        msg = "None of {0} or {1} are git repos".format(
+        msg = "{0} {1} {2}or {3} are git repos".format(
+            "Neither" if len(repo) == 2 else "None of",
             ", ".join(repo[:-1]),
+            "n" if len(repo) == 2 else "",
             repo[-1],
         )
     else:

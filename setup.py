@@ -36,6 +36,7 @@ setup(
     description="A pretty way to show committer stats for git repos",
     long_description="Uses git log to display committer stats for git repos",
     download_url="https://github.com/a-tal/git_credit",
+    install_requires=["bladerunner"],
     tests_require=["mock", "pytest", "pytest-cov", "coverage"],
     cmdclass={"test": PyTest},
     license="BSD",

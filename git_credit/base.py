@@ -7,6 +7,23 @@ import os
 import sys
 import time
 import subprocess
+from collections import Counter
+
+from bladerunner.progressbar import ProgressBar
+
+
+class InsideGit(object):
+    """Simple context manager to perform git actions inside the git dir."""
+
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self._prev_dir = os.getcwd()
+
+    def __enter__(self, *args, **kwargs):
+        os.chdir(self.filepath)
+
+    def __exit__(self, *args, **kwargs):
+        os.chdir(self._prev_dir)
 
 
 def _clean_line(line):
@@ -37,27 +54,26 @@ def _run_cmd(cmd):
     return "".join(output).splitlines()
 
 
-def get_credit_by_line(filepath):
-    """Get a dictionary of git credit for all files in a repo by lines."""
+def get_files_in_repo():
+    """Get a list of git tracked python files in a repo (in the cwd)."""
 
-    _prev_dir = os.getcwd()
-    os.chdir(filepath)
-    all_files = {}
-    walk_cmd = "git ls-tree --name-only -r HEAD | grep -E '\\.py$'"
-    for py_file in _run_cmd(walk_cmd):
-        cmd = "git blame --line-porcelain -L '/[^\\s]/' {0}".format(py_file)
-        for line in _run_cmd(cmd):
-            if not line.startswith("author "):
-                continue
-            line = line[7:]
+    return _run_cmd("git ls-tree --name-only -r HEAD | grep -E '\\.py$'")
 
-            if line in all_files:
-                all_files[line] += 1
-            else:
-                all_files[line] = 1
 
-    os.chdir(_prev_dir)
-    return all_files
+def get_credit(filepath):
+    """Returns a Counter of {author: lines in HEAD} for a single file."""
+
+    credit = Counter()
+    cmd = "git blame --line-porcelain -L '/[^\\s]/' {0}".format(filepath)
+    for line in _run_cmd(cmd):
+        if not line.startswith("author "):
+            continue
+
+        author = line[7:]
+
+        credit[author] += 1
+
+    return credit
 
 
 def is_git_dir(filepath):
@@ -76,7 +92,7 @@ def sorted_by_value(credit):
 def display_credit(credit):
     """Display the credit dict in a nice fashion."""
 
-    total_per_committer = {}
+    total_per_committer = Counter()
     for repo, committers in credit.items():
         repo_total = sum(committers.values())
         print("git credit for repo: {0}".format(repo))
@@ -86,10 +102,8 @@ def display_credit(credit):
                 lines,
                 ((lines / repo_total) * 100),
             ))
-            if committer in total_per_committer:
-                total_per_committer[committer] += lines
-            else:
-                total_per_committer[committer] = lines
+
+            total_per_committer[committer] += lines
 
     if len(credit) > 1:
         total_lines = sum(total_per_committer.values())
@@ -102,22 +116,41 @@ def display_credit(credit):
             ))
 
 
-def walk_git(filepath=None):
-    """Get credit for all repos down from filepath.
+def get_git_repos(filepath=None, existing_pbar=False):
+    """Get a list of git repos down from filepath.
 
-    Returns:
-        dict of {repo: {committer: lines_in_HEAD}}
+    Args::
+
+        filepath: string filepath to search in
+        existing_pbar: if a progressbar is already in progress
     """
 
     if filepath is None:
         filepath = os.curdir
+    elif not os.path.exists(filepath):
+        return []
 
-    all_credit = {}
+    dirs = len([path for path in os.listdir(filepath) if os.path.isdir(path)])
+    if dirs > 1 and not existing_pbar:
+        pbar = ProgressBar(dirs, options={
+            "left_padding": "finding repos ",
+            "show_counters": True,
+        })
+        pbar.setup()
+    else:
+        pbar = None
+
+    all_repos = []
     for repo, _, _ in os.walk(os.path.realpath(filepath)):
-        if is_git_dir(repo):
-            all_credit[repo] = get_credit_by_line(repo)
+        if is_git_dir(repo) and not repo in all_repos:
+            all_repos.append(repo)
+            if pbar:
+                pbar.update()
 
-    return all_credit
+    if pbar:
+        pbar.clear()
+
+    return all_repos
 
 
 def get_help(repo=None):
@@ -139,25 +172,96 @@ def get_help(repo=None):
     raise SystemExit(msg)
 
 
-def parse_args(args):
-    """Check for arguments as filepaths and build the credit dict with them."""
+def get_all_git_repos(args):
+    """Check for arguments as filepaths and build a list of repos with them."""
+
+    pbar = None
 
     if len(args) == 1:
-        all_credit = walk_git()
+        all_repos = get_git_repos()
     elif len(args) == 2:
-        all_credit = walk_git(args[1])
+        all_repos = get_git_repos(args[1])
     else:
-        all_credit = {}
-        for arg in args[1:]:
-            all_credit.update(walk_git(arg))
+        all_repos = []
+        all_args = args[1:]
+        if len(all_args) > 1:
+            pbar = ProgressBar(len(all_args), options={
+                "left_padding": "finding repos ",
+                "show_counters": True,
+            })
+            pbar.setup()
 
-    return all_credit or get_help(args[1:])
+        for arg in all_args:
+            for repo in get_git_repos(arg, True):
+                if repo not in all_repos:
+                    all_repos.append(repo)
+                if pbar:
+                    pbar.update()
+
+    if pbar:
+        pbar.clear()
+
+    return all_repos or get_help(args[1:])
+
+
+def get_all_tracked_files(all_repos):
+    """For each repo, find all python files.
+
+    Returns:
+        a dictionary of {repo: [python files]}
+    """
+
+    # if we're doing multiple repos, inform the user that we're finding files
+    num_repos = len(all_repos)
+    if num_repos > 1:
+        pbar = ProgressBar(num_repos, options={
+            "left_padding": "finding tracked files ",
+            "show_counters": True,
+        })
+        pbar.setup()
+    else:
+        pbar = None
+
+    files_by_repo = {}
+    for repo in all_repos:
+        with InsideGit(repo):
+            files_by_repo[repo] = get_files_in_repo()
+            if pbar:
+                pbar.update()
+
+    if pbar:
+        pbar.clear()
+
+    return files_by_repo
 
 
 def main():
     """Command line entry point."""
 
-    display_credit(parse_args(sys.argv))
+    # find repos and tracked files
+    by_repo = get_all_tracked_files(get_all_git_repos(sys.argv))
+
+    # get a count of all tracked files for the progress bar
+    num_files = sum({_: len(files) for _, files in by_repo.items()}.values())
+    pbar = ProgressBar(num_files, options={
+        "left_padding": "getting credit per file ",
+        "show_counters": True,
+    })
+
+    pbar.setup()
+    all_credit = {}
+    for repo, python_files in by_repo.items():
+        with InsideGit(repo):
+            repo_credit = Counter()
+
+            for pyfile in python_files:
+                repo_credit.update(get_credit(pyfile))
+                pbar.update()
+
+            all_credit[repo] = repo_credit
+
+    pbar.clear()
+    display_credit(all_credit)
 
 
 if __name__ == "__main__":

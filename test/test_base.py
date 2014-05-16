@@ -26,13 +26,16 @@ def args(request):
 def test_parse_args(args):
     """Check the lazy arg parser is working as intended."""
 
-    with patch.object(base, "walk_git", return_value={"fake": 10}) as mock_git:
-        base.parse_args(args)
+    with patch.object(base, "get_git_repos", return_value=["fake"]) as mockgit:
+        base.get_all_git_repos(args)
 
     for arg in args[1:]:
-        mock_git.assert_any_call(arg)
+        if len(args[1:]) > 1:
+            mockgit.assert_any_call(arg, True)
+        else:
+            mockgit.assert_any_call(arg)
 
-    assert mock_git.called
+    assert mockgit.called
 
 
 def test_getting_help(args):
@@ -60,7 +63,7 @@ def test_getting_help(args):
 def test_main():
     """Mock to ensure program flow."""
 
-    with patch.object(base, "parse_args") as mock_parse:
+    with patch.object(base, "get_all_git_repos") as mock_parse:
         with patch.object(base, "display_credit") as mock_display:
             base.main()
     mock_parse.assert_called_once_with(sys.argv)
@@ -68,19 +71,23 @@ def test_main():
 
 
 @pytest.mark.parametrize("filepath", (".", "..", None, "/fake/dir"))
-def test_walk_git(filepath):
+def test_get_git_repos(filepath):
     """A whole lot of mocking going on here..."""
 
+    exists_mock = patch.object(base.os.path, "exists", return_value=True)
+    isdir_mock = patch.object(base.os.path, "isdir", return_value=True)
+    listdir_mock = patch.object(base.os, "listdir", return_value=["ok"])
     realpath_mock = patch.object(base.os.path, "realpath", return_value="fake")
     walk_mock = patch.object(base.os, "walk", return_value=[("ok", 0, 0)])
     git_dir_mock = patch.object(base, "is_git_dir", return_value=True)
-    get_credit_mock = patch.object(base, "get_credit_by_line", return_value=1)
 
-    with realpath_mock as mock_realpath:
-        with walk_mock as mock_walk:
-            with git_dir_mock as mock_git_dir:
-                with get_credit_mock as mock_get_credit:
-                    assert base.walk_git(filepath) == {"ok": 1}
+    with exists_mock:
+        with isdir_mock:
+            with listdir_mock:
+                with realpath_mock as mock_realpath:
+                    with walk_mock as mock_walk:
+                        with git_dir_mock as mock_git_dir:
+                            assert base.get_git_repos(filepath) == ["ok"]
 
     if filepath is None:
         mock_realpath.assert_called_once_with(os.curdir)
@@ -89,7 +96,6 @@ def test_walk_git(filepath):
 
     mock_walk.assert_called_once_with("fake")
     mock_git_dir.assert_called_once_with("ok")
-    mock_get_credit.assert_called_once_with("ok")
 
 
 @pytest.mark.parametrize("test_input",

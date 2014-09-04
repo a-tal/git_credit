@@ -11,6 +11,8 @@ from collections import Counter
 
 from bladerunner.progressbar import ProgressBar
 
+from git_credit import graph_output
+
 
 class InsideGit(object):
     """Simple context manager to perform git actions inside the git dir."""
@@ -95,7 +97,8 @@ def display_credit(credit):
     total_per_committer = Counter()
     for repo, committers in credit.items():
         repo_total = sum(committers.values())
-        print("git credit for repo: {0}".format(repo))
+        title = "git credit for repo: {0}".format(repo)
+        print(title)
         for committer, lines in sorted_by_value(committers):
             print("    {0}: {1} lines ({2:.1f}%)".format(
                 committer,
@@ -107,13 +110,16 @@ def display_credit(credit):
 
     if len(credit) > 1:
         total_lines = sum(total_per_committer.values())
-        print("total git credit across all {0} repos:".format(len(credit)))
+        title = "total git credit across all {0} repos:".format(len(credit))
+        print(title)
         for committer, lines in sorted_by_value(total_per_committer):
             print("    {0}: {1} lines ({2:.1f}%)".format(
                 committer,
                 lines,
                 ((lines / total_lines) * 100),
             ))
+
+    return total_per_committer, title
 
 
 def get_git_repos(filepath=None, existing_pbar=False):
@@ -238,8 +244,19 @@ def get_all_tracked_files(all_repos):
 def main():
     """Command line entry point."""
 
+    pie_chart = False
+    bar_chart = False
+
+    args = sys.argv
+    if "--pie" in args:
+        pie_chart = True
+        args.remove("--pie")
+    elif "--bar" in args:
+        bar_chart = True
+        args.remove("--bar")
+
     # find repos and tracked files
-    by_repo = get_all_tracked_files(get_all_git_repos(sys.argv))
+    by_repo = get_all_tracked_files(get_all_git_repos(args))
 
     # get a count of all tracked files for the progress bar
     num_files = sum({_: len(files) for _, files in by_repo.items()}.values())
@@ -261,7 +278,12 @@ def main():
             all_credit[repo] = repo_credit
 
     pbar.clear()
-    display_credit(all_credit)
+    total_per_committer, graph_title = display_credit(all_credit)
+
+    if pie_chart:
+        graph_output.pie_chart(total_per_committer, graph_title)
+    elif bar_chart:
+        graph_output.bar_chart(total_per_committer, graph_title)
 
 
 if __name__ == "__main__":

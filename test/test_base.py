@@ -64,10 +64,10 @@ def test_main():
     """Mock to ensure program flow."""
 
     with patch.object(base, "get_all_git_repos") as mock_parse:
-        with patch.object(base, "display_credit") as mock_display:
+        with patch.object(base, "display_credit", return_value=(0, 1)) as disp:
             base.main()
     mock_parse.assert_called_once_with(sys.argv)
-    assert mock_display.called
+    assert disp.called
 
 
 @pytest.mark.parametrize("filepath", (".", "..", None, "/fake/dir"))
